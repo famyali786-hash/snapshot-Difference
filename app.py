@@ -1,12 +1,12 @@
 """Streamlit web UI for File System Snapshot Difference tool."""
 import os
+import io
+import hashlib
 import streamlit as st
 import json
 from datetime import datetime
 
-from src.snapshot import take_snapshot
 from src.diff import diff_snapshots
-from src.file_compare import file_status
 
 st.set_page_config(page_title="File System Snapshot", page_icon="📁")
 
@@ -14,24 +14,20 @@ SNAPSHOT_DIR = "snapshots"
 os.makedirs(SNAPSHOT_DIR, exist_ok=True)
 
 
-@st.cache_data(show_spinner=False)
-def get_folder_stats(path):
-    """Return (total_files, total_folders, last_modified)."""
-    total_files = 0
-    total_folders = 0
-    last_mod = None
-    for root, dirs, files in os.walk(path):
-        total_folders += len(dirs)
-        total_files += len(files)
-        for f in files:
-            fpath = os.path.join(root, f)
-            try:
-                mtime = os.path.getmtime(fpath)
-                if last_mod is None or mtime > last_mod:
-                    last_mod = mtime
-            except OSError:
-                continue
-    return total_files, total_folders, datetime.fromtimestamp(last_mod) if last_mod else None
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def get_file_hash_bytes(data: bytes) -> str:
+    """Return MD5 hash of bytes."""
+    return hashlib.md5(data).hexdigest()
+
+
+def get_file_hash_path(path: str) -> str:
+    """Return MD5 hash of a file on disk."""
+    md5 = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            md5.update(chunk)
+    return md5.hexdigest()
 
 
 @st.cache_data(show_spinner=False)
@@ -41,7 +37,7 @@ def list_snapshots():
     if not os.path.exists(SNAPSHOT_DIR):
         return snaps
     for f in os.listdir(SNAPSHOT_DIR):
-        if f.endswith('.json'):
+        if f.endswith(".json"):
             path = os.path.join(SNAPSHOT_DIR, f)
             try:
                 stat = os.stat(path)
@@ -57,11 +53,11 @@ def list_snapshots():
     return sorted(snaps, key=lambda x: x["date"], reverse=True)
 
 
-# Theme management
+# ── Theme ─────────────────────────────────────────────────────────────────────
+
 if "theme" not in st.session_state:
     st.session_state.theme = True
 
-# Sidebar Settings
 with st.sidebar:
     st.title("Settings")
     theme = st.toggle("Dark Mode", value=st.session_state.theme)
@@ -74,55 +70,83 @@ with st.sidebar:
         label_visibility="collapsed"
     )
 
-# Theme colors
 dark = theme
-bg_color = "#0d1117" if dark else "#ffffff"
-text_color = "#c9d1d9" if dark else "#24292f"
+bg_color      = "#0d1117" if dark else "#ffffff"
+text_color    = "#c9d1d9" if dark else "#24292f"
 sidebar_color = "#161b22" if dark else "#f0f2f6"
-btn_color = "#238636"
-color_added = "#3fb950" if dark else "#22863a"
+card_color    = "#161b22" if dark else "#f6f8fa"
+border_color  = "#30363d" if dark else "#d0d7de"
+btn_color     = "#238636"
+color_added    = "#3fb950" if dark else "#22863a"
 color_modified = "#d29922" if dark else "#b08800"
-color_removed = "#f85149" if dark else "#cb2431"
+color_removed  = "#f85149" if dark else "#cb2431"
 
-st.markdown(
-    f"""
+st.markdown(f"""
 <style>
 .stApp {{ background-color: {bg_color}; color: {text_color}; }}
 [data-testid="stSidebar"] {{ background-color: {sidebar_color}; }}
-.stButton > button {{ background-color: {btn_color}; color: white; border: none; }}
-.added {{ color: {color_added}; }}
-.modified {{ color: {color_modified}; }}
-.removed {{ color: {color_removed}; }}
+.stButton > button {{ background-color: {btn_color}; color: white; border: none; border-radius: 6px; }}
+.added    {{ color: {color_added}; font-family: monospace; }}
+.modified {{ color: {color_modified}; font-family: monospace; }}
+.removed  {{ color: {color_removed}; font-family: monospace; }}
+.info-card {{
+    background: {card_color};
+    border: 1px solid {border_color};
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+}}
 </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
 st.title("📁 File System Snapshot Tool")
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SECTION 1 — Take Snapshot
+# ══════════════════════════════════════════════════════════════════════════════
 if section == "Take Snapshot":
     st.header("Take Snapshot")
-    folder_path = st.text_input("Folder Path", placeholder="Enter folder path...")
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        snapshot_name = st.text_input("Snapshot Name", placeholder="my_snapshot")
-    if folder_path and os.path.isdir(folder_path):
-        files, folders, last_mod = get_folder_stats(folder_path)
-        st.caption(f"📁 {files} files | 📂 {folders} folders | 🕐 {last_mod}")
-    if st.button("Take Snapshot", type="primary") and folder_path:
-        if not snapshot_name:
-            st.error("Please enter a snapshot name")
-        elif not os.path.isdir(folder_path):
-            st.error("Invalid folder path")
-        else:
-            output = os.path.join(SNAPSHOT_DIR, snapshot_name + ".json")
-            try:
-                result = take_snapshot(folder_path, output)
-                list_snapshots.clear()
-                st.success(f"✅ Snapshot saved with {len(result)} files!")
-            except Exception as e:
-                st.error(f"Error: {e}")
+    st.info("📤 Upload files from your computer — a snapshot will be created from them.")
 
+    uploaded_files = st.file_uploader(
+        "Upload files (select multiple)",
+        accept_multiple_files=True,
+        help="You can select an entire folder's files using Ctrl+A in the file dialog."
+    )
+
+    snapshot_name = st.text_input("Snapshot Name", placeholder="e.g. my_snapshot_v1")
+
+    if uploaded_files:
+        st.caption(f"📄 {len(uploaded_files)} file(s) selected")
+
+    if st.button("💾 Save Snapshot", type="primary"):
+        if not snapshot_name.strip():
+            st.error("Please enter a snapshot name.")
+        elif not uploaded_files:
+            st.error("Please upload at least one file.")
+        else:
+            files_data = {}
+            for uf in uploaded_files:
+                raw = uf.read()
+                files_data[uf.name] = {
+                    "size": len(raw),
+                    "hash": get_file_hash_bytes(raw)
+                }
+
+            snapshot = {"files": files_data}
+            out_path = os.path.join(SNAPSHOT_DIR, snapshot_name.strip() + ".json")
+            with open(out_path, "w") as fp:
+                json.dump(snapshot, fp, indent=2)
+
+            list_snapshots.clear()
+            st.success(f"✅ Snapshot **{snapshot_name}** saved with {len(files_data)} file(s)!")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SECTION 2 — Snapshot History
+# ══════════════════════════════════════════════════════════════════════════════
 elif section == "Snapshot History":
     st.header("Snapshot History")
     snaps = list_snapshots()
@@ -138,72 +162,129 @@ elif section == "Snapshot History":
         for snap in snaps:
             cols = st.columns([4, 2, 1, 1])
             with cols[0]: st.write(f"📄 {snap['name']}")
-            with cols[1]: st.write(snap['date'].strftime("%Y-%m-%d %H:%M"))
-            with cols[2]: st.write(str(snap['total_files']))
+            with cols[1]: st.write(snap["date"].strftime("%Y-%m-%d %H:%M"))
+            with cols[2]: st.write(str(snap["total_files"]))
             with cols[3]:
                 if st.button("🗑️", key=f"del_{snap['name']}"):
-                    os.remove(os.path.join(SNAPSHOT_DIR, snap['name']))
+                    os.remove(os.path.join(SNAPSHOT_DIR, snap["name"]))
                     list_snapshots.clear()
                     st.rerun()
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SECTION 3 — Compare Snapshots
+# ══════════════════════════════════════════════════════════════════════════════
 elif section == "Compare Snapshots":
     st.header("Compare Snapshots")
     snaps = list_snapshots()
     if len(snaps) < 2:
-        st.warning("⚠️ Need at least 2 snapshots to compare")
+        st.warning("⚠️ Need at least 2 snapshots to compare.")
     else:
-        snap_names = [s['name'] for s in snaps]
+        snap_names = [s["name"] for s in snaps]
         cols = st.columns(2)
         with cols[0]:
-            snap_a = st.selectbox("Snapshot A", snap_names, index=0)
+            snap_a = st.selectbox("Snapshot A (older)", snap_names, index=len(snap_names) - 1)
         with cols[1]:
-            snap_b = st.selectbox("Snapshot B", snap_names, index=max(0, len(snap_names) - 1))
-        if st.button("🔍 Compare", type="primary"):
-            with open(os.path.join(SNAPSHOT_DIR, snap_a)) as fa, \
-                 open(os.path.join(SNAPSHOT_DIR, snap_b)) as fb:
-                old, new = json.load(fa), json.load(fb)
-            result_added, result_removed, result_modified = diff_snapshots(old, new)
-            if result_added:
-                st.markdown("### ✅ Added")
-                for f in result_added:
-                    st.markdown(f"<span class='added'>+ {f}</span>", unsafe_allow_html=True)
-            if result_modified:
-                st.markdown("### 🔄 Modified")
-                for f in result_modified:
-                    st.markdown(f"<span class='modified'>~ {f}</span>", unsafe_allow_html=True)
-            if result_removed:
-                st.markdown("### ❌ Removed")
-                for f in result_removed:
-                    st.markdown(f"<span class='removed'>- {f}</span>", unsafe_allow_html=True)
-            if not (result_added or result_modified or result_removed):
-                st.success("✨ No differences found!")
+            snap_b = st.selectbox("Snapshot B (newer)", snap_names, index=0)
 
+        if st.button("🔍 Compare", type="primary"):
+            if snap_a == snap_b:
+                st.warning("Please select two different snapshots.")
+            else:
+                with open(os.path.join(SNAPSHOT_DIR, snap_a)) as fa:
+                    old = json.load(fa)
+                with open(os.path.join(SNAPSHOT_DIR, snap_b)) as fb:
+                    new = json.load(fb)
+
+                result_added, result_removed, result_modified = diff_snapshots(old, new)
+
+                total = len(result_added) + len(result_removed) + len(result_modified)
+                if total == 0:
+                    st.success("✨ No differences found — snapshots are identical!")
+                else:
+                    st.markdown(f"**{total} change(s) found** — "
+                                f"<span style='color:{color_added}'>+{len(result_added)} added</span> | "
+                                f"<span style='color:{color_modified}'>~{len(result_modified)} modified</span> | "
+                                f"<span style='color:{color_removed}'>-{len(result_removed)} removed</span>",
+                                unsafe_allow_html=True)
+                    st.divider()
+
+                    if result_added:
+                        st.markdown("### ✅ Added")
+                        for f in sorted(result_added):
+                            st.markdown(f"<div class='info-card added'>+ {f}</div>", unsafe_allow_html=True)
+
+                    if result_modified:
+                        st.markdown("### 🔄 Modified")
+                        for f in sorted(result_modified):
+                            st.markdown(f"<div class='info-card modified'>~ {f}</div>", unsafe_allow_html=True)
+
+                    if result_removed:
+                        st.markdown("### ❌ Removed")
+                        for f in sorted(result_removed):
+                            st.markdown(f"<div class='info-card removed'>- {f}</div>", unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SECTION 4 — Compare Files
+# ══════════════════════════════════════════════════════════════════════════════
 elif section == "Compare Files":
     st.header("Compare Files")
+    st.info("📤 Upload the same file from two different points in time to compare them.")
+
     cols = st.columns(2)
     with cols[0]:
-        old_file = st.text_input("Old File Path", placeholder="/path/to/old_file.txt")
+        st.markdown("**Old File**")
+        old_upload = st.file_uploader("Upload old file", key="old_file")
     with cols[1]:
-        new_file = st.text_input("New File Path", placeholder="/path/to/new_file.txt")
-    if st.button("🔍 Compare Files", type="primary") and old_file and new_file:
-        status = file_status(old_file, new_file)
-        icons = {
-            "ADDED": "✅",
-            "REMOVED": "❌",
-            "MODIFIED": "🔄",
-            "NO CHANGE": "✨",
-            "BOTH FILES MISSING": "❓"
-        }
-        status_colors = {
-            "ADDED": color_added,
-            "REMOVED": color_removed,
-            "MODIFIED": color_modified,
-            "NO CHANGE": "#8b949e",
-            "BOTH FILES MISSING": "#8b949e"
-        }
-        icon = icons.get(status, "")
-        clr = status_colors.get(status, "#8b949e")
-        st.markdown(
-            f"**Status:** {icon} <span style='color:{clr}'>{status}</span>",
-            unsafe_allow_html=True
-        )
+        st.markdown("**New File**")
+        new_upload = st.file_uploader("Upload new file", key="new_file")
+
+    if st.button("🔍 Compare Files", type="primary"):
+        if not old_upload and not new_upload:
+            st.error("Please upload both files.")
+        elif not old_upload:
+            st.error("Please upload the old file.")
+        elif not new_upload:
+            st.error("Please upload the new file.")
+        else:
+            old_bytes = old_upload.read()
+            new_bytes = new_upload.read()
+
+            old_hash = get_file_hash_bytes(old_bytes)
+            new_hash = get_file_hash_bytes(new_bytes)
+
+            old_size = len(old_bytes)
+            new_size = len(new_bytes)
+
+            # Determine status
+            if old_hash == new_hash:
+                status = "NO CHANGE"
+            else:
+                status = "MODIFIED"
+
+            icons = {"MODIFIED": "🔄", "NO CHANGE": "✨"}
+            clr   = color_modified if status == "MODIFIED" else "#8b949e"
+            icon  = icons.get(status, "")
+
+            st.markdown(
+                f"**Status:** {icon} <span style='color:{clr}; font-weight:bold'>{status}</span>",
+                unsafe_allow_html=True
+            )
+
+            # Details
+            st.divider()
+            d_cols = st.columns(2)
+            with d_cols[0]:
+                st.markdown(f"**Old File:** `{old_upload.name}`")
+                st.caption(f"Size: {old_size:,} bytes")
+                st.caption(f"MD5: `{old_hash}`")
+            with d_cols[1]:
+                st.markdown(f"**New File:** `{new_upload.name}`")
+                st.caption(f"Size: {new_size:,} bytes")
+                st.caption(f"MD5: `{new_hash}`")
+
+            if status == "MODIFIED":
+                size_diff = new_size - old_size
+                sign = "+" if size_diff >= 0 else ""
+                st.caption(f"Size difference: {sign}{size_diff:,} bytes")
