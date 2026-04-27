@@ -239,6 +239,7 @@ if section == "Take Snapshot":
                 json.dump(snapshot, fp, indent=2)
             list_snapshots.clear()
             st.success(f"✅ Snapshot **{snapshot_name}** saved with {len(files_data)} file(s)!")
+            st.rerun()  # sidebar stats turant update honge
 
     if import_file:
         try:
@@ -249,6 +250,7 @@ if section == "Take Snapshot":
                 json.dump(imported, fp, indent=2)
             list_snapshots.clear()
             st.success(f"✅ Snapshot **{imp_name}** imported successfully!")
+            st.rerun()  # sidebar stats turant update honge
         except Exception as e:
             st.error(f"Import failed: {e}")
 
