@@ -89,7 +89,6 @@ def build_snapshot_from_zip(zip_bytes):
 
 with st.sidebar:
     st.title("Settings")
-    dark_mode = st.toggle("Dark Mode", value=False)
     st.divider()
     st.write("**Select Section**")
     section = st.radio(
@@ -98,128 +97,45 @@ with st.sidebar:
         label_visibility="collapsed"
     )
 
-# Colors based on dark_mode toggle
-if dark_mode:
-    diff_add_bg   = "#0d4429"
-    diff_rem_bg   = "#4d1818"
-    color_added   = "#3fb950"
-    color_removed = "#f85149"
-    bg_color      = "#0d1117"
-    text_color    = "#c9d1d9"
-    sidebar_color = "#161b22"
-    input_bg      = "#21262d"
-    border_color  = "#30363d"
-else:
-    diff_add_bg   = "#e6ffec"
-    diff_rem_bg   = "#ffebe9"
-    color_added   = "#22863a"
-    color_removed = "#cb2431"
-    bg_color      = "#ffffff"
-    text_color    = "#24292f"
-    sidebar_color = "#f0f2f6"
-    input_bg      = "#ffffff"
-    border_color  = "#d0d7de"
-
+# Fixed diff colors that work in both light and dark mode
+color_added    = "#2ea043"
+color_removed  = "#da3633"
 color_modified = "#d29922"
 
-st.markdown(f"""
+st.markdown("""
 <style>
-/* ── Main background and text ── */
-.stApp {{
-    background-color: {bg_color} !important;
-    color: {text_color} !important;
-}}
-
-/* ── Sidebar ── */
-[data-testid="stSidebar"] {{
-    background-color: {sidebar_color} !important;
-}}
-[data-testid="stSidebar"] p,
-[data-testid="stSidebar"] span,
-[data-testid="stSidebar"] label,
-[data-testid="stSidebar"] div,
-[data-testid="stSidebar"] h1,
-[data-testid="stSidebar"] h2,
-[data-testid="stSidebar"] h3 {{
-    color: {text_color} !important;
-}}
-
-/* ── Main content text ── */
-.main p, .main span, .main label,
-.main h1, .main h2, .main h3, .main div {{
-    color: {text_color};
-}}
-
-/* ── Text input ── */
-.stTextInput input {{
-    background-color: {input_bg} !important;
-    color: {text_color} !important;
-    border: 1px solid {border_color} !important;
-    border-radius: 6px !important;
-}}
-
-/* ── Selectbox ── */
-[data-testid="stSelectbox"] > div > div {{
-    background-color: {input_bg} !important;
-    color: {text_color} !important;
-    border: 1px solid {border_color} !important;
-}}
-
-/* ── File uploader ── */
-[data-testid="stFileUploader"] {{
-    background-color: {input_bg} !important;
-    border: 1px solid {border_color} !important;
-    border-radius: 8px !important;
-}}
-[data-testid="stFileUploader"] * {{
-    color: {text_color} !important;
-}}
-
-/* ── Expander ── */
-[data-testid="stExpander"] {{
-    background-color: {input_bg} !important;
-    border: 1px solid {border_color} !important;
-}}
-[data-testid="stExpander"] summary,
-[data-testid="stExpander"] summary span {{
-    color: {text_color} !important;
-}}
-
-/* ── Buttons ── */
-.stButton > button {{
+.stButton > button {
     background-color: #238636 !important;
     color: white !important;
     border: none !important;
     border-radius: 6px !important;
-}}
-.stDownloadButton > button {{
+}
+.stDownloadButton > button {
     background-color: #238636 !important;
     color: white !important;
     border: none !important;
     border-radius: 6px !important;
-}}
-
-/* ── Diff table ── */
-.diff-table {{
+}
+.diff-table {
     width: 100%;
     border-collapse: collapse;
     font-family: monospace;
     font-size: 0.82rem;
-}}
-.diff-table td {{
+}
+.diff-table td {
     padding: 2px 8px;
     white-space: pre-wrap;
     word-break: break-all;
-}}
-.diff-add {{ background: {diff_add_bg}; color: {color_added}; }}
-.diff-rem {{ background: {diff_rem_bg}; color: {color_removed}; }}
-.diff-eq  {{ color: #8b949e; }}
-.lineno   {{
+}
+.diff-add { background: #0d4429; color: #3fb950; }
+.diff-rem { background: #4d1818; color: #f85149; }
+.diff-eq  { color: #8b949e; }
+.lineno   {
     color: #8b949e !important;
     text-align: right;
     user-select: none;
     min-width: 36px;
-}}
+}
 </style>
 """, unsafe_allow_html=True)
 
