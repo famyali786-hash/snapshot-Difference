@@ -29,8 +29,12 @@ def diff_snapshots(old_snap, new_snap):
 
     # Loop through files that appear in both snapshots
     for file_path in old_files & new_files:
-        old_hash = old_snap["files"][file_path]["hash"]
-        new_hash = new_snap["files"][file_path]["hash"]
+        old_hash = old_snap["files"][file_path].get("hash")
+        new_hash = new_snap["files"][file_path].get("hash")
+
+        # Skip if either hash is missing (malformed snapshot)
+        if old_hash is None or new_hash is None:
+            continue
 
         # If the hashes are different, the file content has changed
         if old_hash != new_hash:

@@ -1,6 +1,7 @@
 """Streamlit web UI for File System Snapshot Difference tool."""
 import os
 import io
+import time
 import hashlib
 import zipfile
 import json
@@ -20,6 +21,8 @@ os.makedirs(SNAPSHOT_DIR, exist_ok=True)
 # Files larger than this will be skipped during upload
 MAX_FILE_SIZE_MB = 50
 
+
+# ── HELPER FUNCTIONS ──────────────────────────────────────────────────────────
 
 def get_hash(data):
     """Return MD5 hash of bytes data."""
@@ -128,6 +131,30 @@ def get_live_stats():
             last_snapshot = snap_date.strftime("%b %d, %Y")
 
     return total_snapshots, total_files, last_snapshot
+
+
+def build_diff_table(diff_lines):
+    """Build an HTML diff table from a list of line diff entries."""
+    rows_html = ""
+    for d in diff_lines:
+        if d["type"] == "added":
+            css, sign = "diff-add", "+"
+        elif d["type"] == "removed":
+            css, sign = "diff-rem", "-"
+        else:
+            css, sign = "diff-eq", " "
+        old_n = str(d["old_no"]) if d["old_no"] else ""
+        new_n = str(d["new_no"]) if d["new_no"] else ""
+        # Escape HTML special characters to prevent rendering issues
+        line = d["line"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        rows_html += (
+            f"<tr class='{css}'>"
+            f"<td class='lineno'>{old_n}</td>"
+            f"<td class='lineno'>{new_n}</td>"
+            f"<td>{sign} {line}</td>"
+            f"</tr>"
+        )
+    return f"<table class='diff-table'>{rows_html}</table>"
 
 
 # ── SIDEBAR ───────────────────────────────────────────────────────────────────
@@ -242,9 +269,7 @@ if section == "Take Snapshot":
                 json.dump(snapshot, fp, indent=2)
             list_snapshots.clear()
             st.success(f"✅ Snapshot **{snapshot_name}** saved with {len(files_data)} file(s)!")
-            # Small delay so user sees success message before rerun
-            import time
-            time.sleep(1)
+            time.sleep(1)  # Let user see the success message before page reruns
             st.rerun()
 
     if import_file:
@@ -256,7 +281,6 @@ if section == "Take Snapshot":
                 json.dump(imported, fp, indent=2)
             list_snapshots.clear()
             st.success(f"✅ Snapshot **{imp_name}** imported successfully!")
-            import time
             time.sleep(1)
             st.rerun()
         except Exception as e:
@@ -288,19 +312,28 @@ elif section == "Snapshot History":
             with cols[2]: st.write(str(snap["total_files"]))
 
             snap_path = os.path.join(SNAPSHOT_DIR, snap["name"])
-            with open(snap_path, "rb") as fp:
-                snap_bytes = fp.read()
 
-            with cols[3]:
-                st.download_button(
-                    "⬇️", data=snap_bytes,
-                    file_name=snap["name"],
-                    mime="application/json",
-                    key=f"dl_{snap['name']}"
-                )
+            # FIX: wrap file read in try/except — file may be deleted between list and read
+            try:
+                with open(snap_path, "rb") as fp:
+                    snap_bytes = fp.read()
+                with cols[3]:
+                    st.download_button(
+                        "⬇️", data=snap_bytes,
+                        file_name=snap["name"],
+                        mime="application/json",
+                        key=f"dl_{snap['name']}"
+                    )
+            except OSError:
+                with cols[3]:
+                    st.write("—")
+
             with cols[4]:
                 if st.button("🗑️", key=f"del_{snap['name']}"):
-                    os.remove(snap_path)
+                    try:
+                        os.remove(snap_path)
+                    except OSError:
+                        pass  # Already deleted — ignore
                     list_snapshots.clear()
                     st.rerun()
 
@@ -361,30 +394,20 @@ elif section == "Compare Snapshots":
                         for fname in sorted(result_modified):
                             old_entry = old["files"].get(fname, {})
                             new_entry = new["files"].get(fname, {})
+                            # "text" key is present only in UI-generated snapshots
                             old_text  = old_entry.get("text")
                             new_text  = new_entry.get("text")
 
                             with st.expander(f"📄 {fname}"):
                                 if old_text is not None and new_text is not None:
+                                    # Text file — show line-by-line diff
                                     diff_lines = line_diff(old_text, new_text)
                                     added_c   = sum(1 for d in diff_lines if d["type"] == "added")
                                     removed_c = sum(1 for d in diff_lines if d["type"] == "removed")
                                     st.caption(f"+{added_c} lines added  |  -{removed_c} lines removed")
-
-                                    rows_html = ""
-                                    for d in diff_lines:
-                                        if d["type"] == "added":
-                                            css, sign = "diff-add", "+"
-                                        elif d["type"] == "removed":
-                                            css, sign = "diff-rem", "-"
-                                        else:
-                                            css, sign = "diff-eq", " "
-                                        old_n = str(d["old_no"]) if d["old_no"] else ""
-                                        new_n = str(d["new_no"]) if d["new_no"] else ""
-                                        line  = d["line"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                                        rows_html += f"<tr class='{css}'><td class='lineno'>{old_n}</td><td class='lineno'>{new_n}</td><td>{sign} {line}</td></tr>"
-                                    st.markdown(f"<table class='diff-table'>{rows_html}</table>", unsafe_allow_html=True)
+                                    st.markdown(build_diff_table(diff_lines), unsafe_allow_html=True)
                                 else:
+                                    # Binary file or CLI-generated snapshot — show size diff only
                                     old_size = old_entry.get("size", 0)
                                     new_size = new_entry.get("size", 0)
                                     diff_b   = new_size - old_size
@@ -447,19 +470,7 @@ elif section == "Compare Files":
                     added_c    = sum(1 for d in diff_lines if d["type"] == "added")
                     removed_c  = sum(1 for d in diff_lines if d["type"] == "removed")
                     st.caption(f"+{added_c} lines added  |  -{removed_c} lines removed")
-
-                    rows_html = ""
-                    for d in diff_lines:
-                        if d["type"] == "added":
-                            css, sign = "diff-add", "+"
-                        elif d["type"] == "removed":
-                            css, sign = "diff-rem", "-"
-                        else:
-                            css, sign = "diff-eq", " "
-                        old_n = str(d["old_no"]) if d["old_no"] else ""
-                        new_n = str(d["new_no"]) if d["new_no"] else ""
-                        line  = d["line"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                        rows_html += f"<tr class='{css}'><td class='lineno'>{old_n}</td><td class='lineno'>{new_n}</td><td>{sign} {line}</td></tr>"
-                    st.markdown(f"<table class='diff-table'>{rows_html}</table>", unsafe_allow_html=True)
+                    # Reuse the same helper function — no code duplication
+                    st.markdown(build_diff_table(diff_lines), unsafe_allow_html=True)
                 else:
                     st.info("Binary file — line diff not available.")
