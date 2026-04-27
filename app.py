@@ -120,21 +120,94 @@ color_modified = "#b08800"
 
 st.markdown(f"""
 <style>
+/* ── Main app background aur text ── */
 .stApp {{ background-color: {bg_color}; color: {text_color}; }}
+
+/* ── Sidebar background aur text ── */
 [data-testid="stSidebar"] {{
     background-color: {sidebar_color};
-    color: {text_color};
 }}
-[data-testid="stSidebar"] * {{
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] div {{
     color: {text_color} !important;
 }}
-.stButton > button {{ background-color: #238636; color: white !important; border: none; }}
+
+/* ── Toggle button — track aur thumb ── */
+[data-testid="stSidebar"] [data-testid="stToggle"] > label > div[data-testid="stMarkdownContainer"] p {{
+    color: {text_color} !important;
+}}
+[data-testid="stSidebar"] .stToggle span {{
+    background-color: {"#3fb950" if dark_mode else "#ccc"} !important;
+}}
+
+/* ── Radio buttons text ── */
+[data-testid="stSidebar"] .stRadio label span {{
+    color: {text_color} !important;
+}}
+
+/* ── File uploader ── */
+[data-testid="stFileUploader"] {{
+    background-color: {"#21262d" if dark_mode else "#f6f8fa"} !important;
+    border: 1px solid {"#30363d" if dark_mode else "#d0d7de"} !important;
+    border-radius: 8px;
+}}
+[data-testid="stFileUploader"] * {{
+    color: {text_color} !important;
+}}
+[data-testid="stFileUploaderDropzone"] {{
+    background-color: {"#161b22" if dark_mode else "#ffffff"} !important;
+}}
+
+/* ── Selectbox ── */
+[data-testid="stSelectbox"] > div > div {{
+    background-color: {"#21262d" if dark_mode else "#ffffff"} !important;
+    color: {text_color} !important;
+    border: 1px solid {"#30363d" if dark_mode else "#d0d7de"} !important;
+}}
+
+/* ── Text input ── */
+.stTextInput input {{
+    background-color: {"#21262d" if dark_mode else "#ffffff"} !important;
+    color: {text_color} !important;
+    border: 1px solid {"#30363d" if dark_mode else "#d0d7de"} !important;
+}}
+
+/* ── Expander ── */
+[data-testid="stExpander"] {{
+    background-color: {"#161b22" if dark_mode else "#f6f8fa"} !important;
+    border: 1px solid {"#30363d" if dark_mode else "#d0d7de"} !important;
+}}
+[data-testid="stExpander"] summary span {{
+    color: {text_color} !important;
+}}
+
+/* ── Buttons ── */
+.stButton > button {{
+    background-color: #238636 !important;
+    color: white !important;
+    border: none !important;
+}}
+.stDownloadButton > button {{
+    background-color: #238636 !important;
+    color: white !important;
+    border: none !important;
+}}
+
+/* ── Diff table ── */
 .diff-table {{ width:100%; border-collapse:collapse; font-family:monospace; font-size:0.82rem; }}
 .diff-table td {{ padding: 2px 8px; white-space: pre-wrap; word-break: break-all; }}
 .diff-add {{ background:{diff_add_bg}; color:{color_added}; }}
 .diff-rem {{ background:{diff_rem_bg}; color:{color_removed}; }}
-.diff-eq  {{ color:#57606a; }}
+.diff-eq  {{ color:{"#8b949e" if dark_mode else "#57606a"}; }}
 .lineno   {{ color:#8b949e !important; text-align:right; user-select:none; min-width:36px; }}
+
+/* ── Info/warning/success boxes ── */
+[data-testid="stAlert"] {{
+    background-color: {"#161b22" if dark_mode else "#f6f8fa"} !important;
+    color: {text_color} !important;
+}}
 </style>
 """, unsafe_allow_html=True)
 
