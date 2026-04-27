@@ -88,7 +88,7 @@ def build_snapshot_from_zip(zip_bytes):
 # ── Theme ─────────────────────────────────────────────────────────────────────
 
 if "theme" not in st.session_state:
-    st.session_state.theme = True
+    st.session_state.theme = False  # default: light mode (screenshot jaisa)
 
 with st.sidebar:
     st.title("Settings")
