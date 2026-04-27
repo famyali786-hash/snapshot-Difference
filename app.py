@@ -89,7 +89,6 @@ def build_snapshot_from_zip(zip_bytes):
 
 with st.sidebar:
     st.title("Settings")
-    dark_mode = st.toggle("Dark Mode", value=False)
     st.divider()
     st.write("**Select Section**")
     section = st.radio(
@@ -98,116 +97,50 @@ with st.sidebar:
         label_visibility="collapsed"
     )
 
-# Apply dark mode colors if toggle is on
-if dark_mode:
-    bg_color      = "#0d1117"
-    text_color    = "#c9d1d9"
-    sidebar_color = "#161b22"
-    diff_add_bg   = "#0d4429"
-    diff_rem_bg   = "#4d1818"
-    color_added   = "#3fb950"
-    color_removed = "#f85149"
-else:
-    bg_color      = "#ffffff"
-    text_color    = "#24292f"
-    sidebar_color = "#f0f2f6"
-    diff_add_bg   = "#e6ffec"
-    diff_rem_bg   = "#ffebe9"
-    color_added   = "#22863a"
-    color_removed = "#cb2431"
+# Colors — same in both light and dark (Streamlit handles background automatically)
+color_added   = "#2ea043"
+color_removed = "#da3633"
+color_modified = "#d29922"
+diff_add_bg   = "#0d4429"
+diff_rem_bg   = "#4d1818"
 
-color_modified = "#b08800"
-
-st.markdown(f"""
+st.markdown("""
 <style>
-/* ── Main app background aur text ── */
-.stApp {{ background-color: {bg_color}; color: {text_color}; }}
-
-/* ── Sidebar background aur text ── */
-[data-testid="stSidebar"] {{
-    background-color: {sidebar_color};
-}}
-[data-testid="stSidebar"] p,
-[data-testid="stSidebar"] span,
-[data-testid="stSidebar"] label,
-[data-testid="stSidebar"] div {{
-    color: {text_color} !important;
-}}
-
-/* ── Toggle button — track aur thumb ── */
-[data-testid="stSidebar"] [data-testid="stToggle"] > label > div[data-testid="stMarkdownContainer"] p {{
-    color: {text_color} !important;
-}}
-[data-testid="stSidebar"] .stToggle span {{
-    background-color: {"#3fb950" if dark_mode else "#ccc"} !important;
-}}
-
-/* ── Radio buttons text ── */
-[data-testid="stSidebar"] .stRadio label span {{
-    color: {text_color} !important;
-}}
-
-/* ── File uploader ── */
-[data-testid="stFileUploader"] {{
-    background-color: {"#21262d" if dark_mode else "#f6f8fa"} !important;
-    border: 1px solid {"#30363d" if dark_mode else "#d0d7de"} !important;
-    border-radius: 8px;
-}}
-[data-testid="stFileUploader"] * {{
-    color: {text_color} !important;
-}}
-[data-testid="stFileUploaderDropzone"] {{
-    background-color: {"#161b22" if dark_mode else "#ffffff"} !important;
-}}
-
-/* ── Selectbox ── */
-[data-testid="stSelectbox"] > div > div {{
-    background-color: {"#21262d" if dark_mode else "#ffffff"} !important;
-    color: {text_color} !important;
-    border: 1px solid {"#30363d" if dark_mode else "#d0d7de"} !important;
-}}
-
-/* ── Text input ── */
-.stTextInput input {{
-    background-color: {"#21262d" if dark_mode else "#ffffff"} !important;
-    color: {text_color} !important;
-    border: 1px solid {"#30363d" if dark_mode else "#d0d7de"} !important;
-}}
-
-/* ── Expander ── */
-[data-testid="stExpander"] {{
-    background-color: {"#161b22" if dark_mode else "#f6f8fa"} !important;
-    border: 1px solid {"#30363d" if dark_mode else "#d0d7de"} !important;
-}}
-[data-testid="stExpander"] summary span {{
-    color: {text_color} !important;
-}}
-
-/* ── Buttons ── */
-.stButton > button {{
+/* ── Buttons always green ── */
+.stButton > button {
     background-color: #238636 !important;
     color: white !important;
     border: none !important;
-}}
-.stDownloadButton > button {{
+    border-radius: 6px !important;
+}
+.stDownloadButton > button {
     background-color: #238636 !important;
     color: white !important;
     border: none !important;
-}}
+    border-radius: 6px !important;
+}
 
 /* ── Diff table ── */
-.diff-table {{ width:100%; border-collapse:collapse; font-family:monospace; font-size:0.82rem; }}
-.diff-table td {{ padding: 2px 8px; white-space: pre-wrap; word-break: break-all; }}
-.diff-add {{ background:{diff_add_bg}; color:{color_added}; }}
-.diff-rem {{ background:{diff_rem_bg}; color:{color_removed}; }}
-.diff-eq  {{ color:{"#8b949e" if dark_mode else "#57606a"}; }}
-.lineno   {{ color:#8b949e !important; text-align:right; user-select:none; min-width:36px; }}
-
-/* ── Info/warning/success boxes ── */
-[data-testid="stAlert"] {{
-    background-color: {"#161b22" if dark_mode else "#f6f8fa"} !important;
-    color: {text_color} !important;
-}}
+.diff-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: monospace;
+    font-size: 0.82rem;
+}
+.diff-table td {
+    padding: 2px 8px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.diff-add { background: #0d4429; color: #2ea043; }
+.diff-rem { background: #4d1818; color: #da3633; }
+.diff-eq  { color: #8b949e; }
+.lineno   {
+    color: #8b949e !important;
+    text-align: right;
+    user-select: none;
+    min-width: 36px;
+}
 </style>
 """, unsafe_allow_html=True)
 
