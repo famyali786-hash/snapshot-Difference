@@ -2,37 +2,35 @@
 import os
 import io
 import hashlib
-import streamlit as st
+import zipfile
 import json
 from datetime import datetime
 
-from src.diff import diff_snapshots
+import streamlit as st
 
-st.set_page_config(page_title="File System Snapshot", page_icon="📁")
+from src.diff import diff_snapshots, line_diff
+
+st.set_page_config(page_title="File System Snapshot", page_icon="📁", layout="wide")
 
 SNAPSHOT_DIR = "snapshots"
 os.makedirs(SNAPSHOT_DIR, exist_ok=True)
 
+MAX_FILE_SIZE_MB = 50  # per-file upload limit for hashing
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
 
-def get_file_hash_bytes(data: bytes) -> str:
-    """Return MD5 hash of bytes."""
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def get_hash(data: bytes) -> str:
     return hashlib.md5(data).hexdigest()
 
 
-def get_file_hash_path(path: str) -> str:
-    """Return MD5 hash of a file on disk."""
-    md5 = hashlib.md5()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            md5.update(chunk)
-    return md5.hexdigest()
+def is_text(data: bytes) -> bool:
+    """Heuristic: if no null bytes in first 8 KB → treat as text."""
+    return b"\x00" not in data[:8192]
 
 
 @st.cache_data(show_spinner=False)
 def list_snapshots():
-    """Return sorted list of snapshot metadata."""
     snaps = []
     if not os.path.exists(SNAPSHOT_DIR):
         return snaps
@@ -53,50 +51,90 @@ def list_snapshots():
     return sorted(snaps, key=lambda x: x["date"], reverse=True)
 
 
+def build_snapshot_from_uploads(uploaded_files) -> dict:
+    """Build snapshot dict from a list of UploadedFile objects."""
+    files_data = {}
+    skipped = []
+    for uf in uploaded_files:
+        raw = uf.read()
+        size_mb = len(raw) / (1024 * 1024)
+        if size_mb > MAX_FILE_SIZE_MB:
+            skipped.append(uf.name)
+            continue
+        files_data[uf.name] = {
+            "size": len(raw),
+            "hash": get_hash(raw),
+            "text": raw.decode("utf-8", errors="replace") if is_text(raw) else None
+        }
+    return files_data, skipped
+
+
+def build_snapshot_from_zip(zip_bytes: bytes) -> tuple[dict, list]:
+    """Extract ZIP and build snapshot dict."""
+    files_data = {}
+    skipped = []
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            size_mb = info.file_size / (1024 * 1024)
+            if size_mb > MAX_FILE_SIZE_MB:
+                skipped.append(info.filename)
+                continue
+            raw = zf.read(info.filename)
+            files_data[info.filename] = {
+                "size": len(raw),
+                "hash": get_hash(raw),
+                "text": raw.decode("utf-8", errors="replace") if is_text(raw) else None
+            }
+    return files_data, skipped
+
+
 # ── Theme ─────────────────────────────────────────────────────────────────────
 
 if "theme" not in st.session_state:
     st.session_state.theme = True
 
 with st.sidebar:
-    st.title("Settings")
+    st.title("⚙️ Settings")
     theme = st.toggle("Dark Mode", value=st.session_state.theme)
     st.session_state.theme = theme
     st.divider()
-    st.write("**Select Section**")
+    st.write("**Navigate**")
     section = st.radio(
-        "Navigation",
-        ["Take Snapshot", "Snapshot History", "Compare Snapshots", "Compare Files"],
+        "nav",
+        ["📸 Take Snapshot", "🗂️ Snapshot History", "🔍 Compare Snapshots", "📄 Compare Files"],
         label_visibility="collapsed"
     )
 
-dark = theme
-bg_color      = "#0d1117" if dark else "#ffffff"
-text_color    = "#c9d1d9" if dark else "#24292f"
-sidebar_color = "#161b22" if dark else "#f0f2f6"
-card_color    = "#161b22" if dark else "#f6f8fa"
-border_color  = "#30363d" if dark else "#d0d7de"
-btn_color     = "#238636"
-color_added    = "#3fb950" if dark else "#22863a"
-color_modified = "#d29922" if dark else "#b08800"
-color_removed  = "#f85149" if dark else "#cb2431"
+dark          = theme
+bg            = "#0d1117" if dark else "#ffffff"
+fg            = "#c9d1d9" if dark else "#24292f"
+sidebar_bg    = "#161b22" if dark else "#f0f2f6"
+card_bg       = "#161b22" if dark else "#f6f8fa"
+border        = "#30363d" if dark else "#d0d7de"
+c_added       = "#3fb950" if dark else "#22863a"
+c_modified    = "#d29922" if dark else "#b08800"
+c_removed     = "#f85149" if dark else "#cb2431"
+c_equal       = "#8b949e" if dark else "#57606a"
+diff_add_bg   = "#0d4429" if dark else "#e6ffec"
+diff_rem_bg   = "#4d1818" if dark else "#ffebe9"
+diff_eq_bg    = "transparent"
 
 st.markdown(f"""
 <style>
-.stApp {{ background-color: {bg_color}; color: {text_color}; }}
-[data-testid="stSidebar"] {{ background-color: {sidebar_color}; }}
-.stButton > button {{ background-color: {btn_color}; color: white; border: none; border-radius: 6px; }}
-.added    {{ color: {color_added}; font-family: monospace; }}
-.modified {{ color: {color_modified}; font-family: monospace; }}
-.removed  {{ color: {color_removed}; font-family: monospace; }}
-.info-card {{
-    background: {card_color};
-    border: 1px solid {border_color};
-    border-radius: 8px;
-    padding: 12px 16px;
-    margin-bottom: 8px;
-    font-size: 0.9rem;
-}}
+.stApp {{ background-color: {bg}; color: {fg}; }}
+[data-testid="stSidebar"] {{ background-color: {sidebar_bg}; }}
+.stButton > button {{ background-color: #238636; color: white; border: none; border-radius: 6px; }}
+.diff-table {{ width:100%; border-collapse:collapse; font-family:monospace; font-size:0.82rem; }}
+.diff-table td {{ padding: 2px 8px; white-space: pre-wrap; word-break: break-all; }}
+.diff-add  {{ background:{diff_add_bg}; color:{c_added}; }}
+.diff-rem  {{ background:{diff_rem_bg}; color:{c_removed}; }}
+.diff-eq   {{ background:{diff_eq_bg};  color:{c_equal}; }}
+.lineno    {{ color:#8b949e; text-align:right; user-select:none; min-width:36px; }}
+.badge-add  {{ color:{c_added};    font-weight:bold; }}
+.badge-mod  {{ color:{c_modified}; font-weight:bold; }}
+.badge-rem  {{ color:{c_removed};  font-weight:bold; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -104,88 +142,126 @@ st.title("📁 File System Snapshot Tool")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 1 — Take Snapshot
+# 1 — TAKE SNAPSHOT
 # ══════════════════════════════════════════════════════════════════════════════
-if section == "Take Snapshot":
-    st.header("Take Snapshot")
-    st.info("📤 Upload files from your computer — a snapshot will be created from them.")
+if section == "📸 Take Snapshot":
+    st.header("📸 Take Snapshot")
 
-    uploaded_files = st.file_uploader(
-        "Upload files (select multiple)",
-        accept_multiple_files=True,
-        help="You can select an entire folder's files using Ctrl+A in the file dialog."
-    )
+    mode = st.radio("Upload mode", ["📄 Individual Files", "🗜️ ZIP Folder"], horizontal=True)
+    st.divider()
 
-    snapshot_name = st.text_input("Snapshot Name", placeholder="e.g. my_snapshot_v1")
+    files_data = {}
+    skipped    = []
 
-    if uploaded_files:
-        st.caption(f"📄 {len(uploaded_files)} file(s) selected")
+    if mode == "📄 Individual Files":
+        st.info("Select multiple files using **Ctrl+A** or **Shift+Click** in the file dialog.")
+        uploaded = st.file_uploader(
+            "Upload files", accept_multiple_files=True,
+            help=f"Max {MAX_FILE_SIZE_MB} MB per file"
+        )
+        if uploaded:
+            files_data, skipped = build_snapshot_from_uploads(uploaded)
+            st.caption(f"✅ {len(files_data)} file(s) ready  |  ⚠️ {len(skipped)} skipped (too large)")
 
-    if st.button("💾 Save Snapshot", type="primary"):
+    else:  # ZIP mode
+        st.info("Zip your entire folder → upload the ZIP here.")
+        zip_upload = st.file_uploader("Upload ZIP file", type=["zip"])
+        if zip_upload:
+            with st.spinner("Extracting ZIP…"):
+                files_data, skipped = build_snapshot_from_zip(zip_upload.read())
+            st.caption(f"✅ {len(files_data)} file(s) extracted  |  ⚠️ {len(skipped)} skipped (too large)")
+            if skipped:
+                with st.expander("Skipped files"):
+                    st.write(skipped)
+
+    st.divider()
+    snapshot_name = st.text_input("Snapshot Name", placeholder="e.g. project_v1")
+
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        save_btn = st.button("💾 Save Snapshot", type="primary", disabled=not files_data)
+    with col2:
+        # Also allow importing a previously downloaded snapshot JSON
+        import_file = st.file_uploader("📥 Import snapshot JSON", type=["json"], key="import_snap")
+
+    if save_btn:
         if not snapshot_name.strip():
             st.error("Please enter a snapshot name.")
-        elif not uploaded_files:
-            st.error("Please upload at least one file.")
         else:
-            files_data = {}
-            for uf in uploaded_files:
-                raw = uf.read()
-                files_data[uf.name] = {
-                    "size": len(raw),
-                    "hash": get_file_hash_bytes(raw)
-                }
-
             snapshot = {"files": files_data}
             out_path = os.path.join(SNAPSHOT_DIR, snapshot_name.strip() + ".json")
             with open(out_path, "w") as fp:
                 json.dump(snapshot, fp, indent=2)
-
             list_snapshots.clear()
             st.success(f"✅ Snapshot **{snapshot_name}** saved with {len(files_data)} file(s)!")
 
+    if import_file:
+        try:
+            imported = json.load(import_file)
+            imp_name = import_file.name
+            out_path = os.path.join(SNAPSHOT_DIR, imp_name)
+            with open(out_path, "w") as fp:
+                json.dump(imported, fp, indent=2)
+            list_snapshots.clear()
+            st.success(f"✅ Snapshot **{imp_name}** imported successfully!")
+        except Exception as e:
+            st.error(f"Import failed: {e}")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 2 — Snapshot History
+# 2 — SNAPSHOT HISTORY
 # ══════════════════════════════════════════════════════════════════════════════
-elif section == "Snapshot History":
-    st.header("Snapshot History")
+elif section == "🗂️ Snapshot History":
+    st.header("🗂️ Snapshot History")
     snaps = list_snapshots()
     if not snaps:
         st.info("📭 No snapshots yet. Create one first!")
     else:
-        cols = st.columns([4, 2, 1, 1])
-        with cols[0]: st.write("**Name**")
-        with cols[1]: st.write("**Date**")
-        with cols[2]: st.write("**Files**")
-        with cols[3]: st.write("**Del**")
+        hdr = st.columns([4, 2, 1, 1, 1])
+        for col, label in zip(hdr, ["Name", "Date", "Files", "Download", "Delete"]):
+            col.write(f"**{label}**")
         st.divider()
+
         for snap in snaps:
-            cols = st.columns([4, 2, 1, 1])
-            with cols[0]: st.write(f"📄 {snap['name']}")
-            with cols[1]: st.write(snap["date"].strftime("%Y-%m-%d %H:%M"))
-            with cols[2]: st.write(str(snap["total_files"]))
-            with cols[3]:
-                if st.button("🗑️", key=f"del_{snap['name']}"):
-                    os.remove(os.path.join(SNAPSHOT_DIR, snap["name"]))
-                    list_snapshots.clear()
-                    st.rerun()
+            row = st.columns([4, 2, 1, 1, 1])
+            row[0].write(f"📄 {snap['name']}")
+            row[1].write(snap["date"].strftime("%Y-%m-%d %H:%M"))
+            row[2].write(str(snap["total_files"]))
+
+            # Download button
+            snap_path = os.path.join(SNAPSHOT_DIR, snap["name"])
+            with open(snap_path, "rb") as fp:
+                snap_bytes = fp.read()
+            row[3].download_button(
+                "⬇️", data=snap_bytes,
+                file_name=snap["name"],
+                mime="application/json",
+                key=f"dl_{snap['name']}"
+            )
+
+            # Delete button
+            if row[4].button("🗑️", key=f"del_{snap['name']}"):
+                os.remove(snap_path)
+                list_snapshots.clear()
+                st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 3 — Compare Snapshots
+# 3 — COMPARE SNAPSHOTS
 # ══════════════════════════════════════════════════════════════════════════════
-elif section == "Compare Snapshots":
-    st.header("Compare Snapshots")
+elif section == "🔍 Compare Snapshots":
+    st.header("🔍 Compare Snapshots")
     snaps = list_snapshots()
+
     if len(snaps) < 2:
         st.warning("⚠️ Need at least 2 snapshots to compare.")
     else:
         snap_names = [s["name"] for s in snaps]
-        cols = st.columns(2)
-        with cols[0]:
-            snap_a = st.selectbox("Snapshot A (older)", snap_names, index=len(snap_names) - 1)
-        with cols[1]:
-            snap_b = st.selectbox("Snapshot B (newer)", snap_names, index=0)
+        col1, col2 = st.columns(2)
+        with col1:
+            snap_a = st.selectbox("Snapshot A — Older", snap_names, index=len(snap_names) - 1)
+        with col2:
+            snap_b = st.selectbox("Snapshot B — Newer", snap_names, index=0)
 
         if st.button("🔍 Compare", type="primary"):
             if snap_a == snap_b:
@@ -196,95 +272,157 @@ elif section == "Compare Snapshots":
                 with open(os.path.join(SNAPSHOT_DIR, snap_b)) as fb:
                     new = json.load(fb)
 
-                result_added, result_removed, result_modified = diff_snapshots(old, new)
+                r_added, r_removed, r_modified = diff_snapshots(old, new)
+                total = len(r_added) + len(r_removed) + len(r_modified)
 
-                total = len(result_added) + len(result_removed) + len(result_modified)
                 if total == 0:
-                    st.success("✨ No differences found — snapshots are identical!")
+                    st.success("✨ Snapshots are identical — no differences found!")
                 else:
-                    st.markdown(f"**{total} change(s) found** — "
-                                f"<span style='color:{color_added}'>+{len(result_added)} added</span> | "
-                                f"<span style='color:{color_modified}'>~{len(result_modified)} modified</span> | "
-                                f"<span style='color:{color_removed}'>-{len(result_removed)} removed</span>",
-                                unsafe_allow_html=True)
+                    st.markdown(
+                        f"**{total} change(s):** "
+                        f"<span class='badge-add'>+{len(r_added)} added</span> &nbsp;"
+                        f"<span class='badge-mod'>~{len(r_modified)} modified</span> &nbsp;"
+                        f"<span class='badge-rem'>-{len(r_removed)} removed</span>",
+                        unsafe_allow_html=True
+                    )
                     st.divider()
 
-                    if result_added:
-                        st.markdown("### ✅ Added")
-                        for f in sorted(result_added):
-                            st.markdown(f"<div class='info-card added'>+ {f}</div>", unsafe_allow_html=True)
+                    # ── Added ──
+                    if r_added:
+                        st.markdown(f"### ✅ Added ({len(r_added)})")
+                        for f in sorted(r_added):
+                            st.markdown(f"<span class='badge-add'>+ {f}</span>", unsafe_allow_html=True)
 
-                    if result_modified:
-                        st.markdown("### 🔄 Modified")
-                        for f in sorted(result_modified):
-                            st.markdown(f"<div class='info-card modified'>~ {f}</div>", unsafe_allow_html=True)
+                    # ── Removed ──
+                    if r_removed:
+                        st.markdown(f"### ❌ Removed ({len(r_removed)})")
+                        for f in sorted(r_removed):
+                            st.markdown(f"<span class='badge-rem'>- {f}</span>", unsafe_allow_html=True)
 
-                    if result_removed:
-                        st.markdown("### ❌ Removed")
-                        for f in sorted(result_removed):
-                            st.markdown(f"<div class='info-card removed'>- {f}</div>", unsafe_allow_html=True)
+                    # ── Modified with line diff ──
+                    if r_modified:
+                        st.markdown(f"### 🔄 Modified ({len(r_modified)})")
+                        for fname in sorted(r_modified):
+                            old_entry = old["files"].get(fname, {})
+                            new_entry = new["files"].get(fname, {})
+                            old_text  = old_entry.get("text")
+                            new_text  = new_entry.get("text")
+
+                            with st.expander(f"📄 {fname}"):
+                                if old_text is not None and new_text is not None:
+                                    diff_lines = line_diff(old_text, new_text)
+                                    added_c   = sum(1 for d in diff_lines if d["type"] == "added")
+                                    removed_c = sum(1 for d in diff_lines if d["type"] == "removed")
+                                    st.caption(f"+{added_c} lines added  |  -{removed_c} lines removed")
+
+                                    rows_html = ""
+                                    for d in diff_lines:
+                                        css   = "diff-add" if d["type"] == "added" else \
+                                                "diff-rem" if d["type"] == "removed" else "diff-eq"
+                                        sign  = "+" if d["type"] == "added" else \
+                                                "-" if d["type"] == "removed" else " "
+                                        old_n = str(d["old_no"]) if d["old_no"] else ""
+                                        new_n = str(d["new_no"]) if d["new_no"] else ""
+                                        line  = d["line"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                                        rows_html += (
+                                            f"<tr class='{css}'>"
+                                            f"<td class='lineno'>{old_n}</td>"
+                                            f"<td class='lineno'>{new_n}</td>"
+                                            f"<td>{sign} {line}</td>"
+                                            f"</tr>"
+                                        )
+                                    st.markdown(
+                                        f"<table class='diff-table'>{rows_html}</table>",
+                                        unsafe_allow_html=True
+                                    )
+                                else:
+                                    old_size = old_entry.get("size", 0)
+                                    new_size = new_entry.get("size", 0)
+                                    diff_b   = new_size - old_size
+                                    sign     = "+" if diff_b >= 0 else ""
+                                    st.info(f"Binary file — size changed: {sign}{diff_b:,} bytes")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 4 — Compare Files
+# 4 — COMPARE FILES
 # ══════════════════════════════════════════════════════════════════════════════
-elif section == "Compare Files":
-    st.header("Compare Files")
-    st.info("📤 Upload the same file from two different points in time to compare them.")
+elif section == "📄 Compare Files":
+    st.header("📄 Compare Files")
+    st.info("Upload the same file from two different points in time.")
 
-    cols = st.columns(2)
-    with cols[0]:
+    col1, col2 = st.columns(2)
+    with col1:
         st.markdown("**Old File**")
-        old_upload = st.file_uploader("Upload old file", key="old_file")
-    with cols[1]:
+        old_up = st.file_uploader("Upload old file", key="old_file")
+    with col2:
         st.markdown("**New File**")
-        new_upload = st.file_uploader("Upload new file", key="new_file")
+        new_up = st.file_uploader("Upload new file", key="new_file")
 
     if st.button("🔍 Compare Files", type="primary"):
-        if not old_upload and not new_upload:
+        if not old_up or not new_up:
             st.error("Please upload both files.")
-        elif not old_upload:
-            st.error("Please upload the old file.")
-        elif not new_upload:
-            st.error("Please upload the new file.")
         else:
-            old_bytes = old_upload.read()
-            new_bytes = new_upload.read()
+            old_bytes = old_up.read()
+            new_bytes = new_up.read()
+            old_hash  = get_hash(old_bytes)
+            new_hash  = get_hash(new_bytes)
+            old_size  = len(old_bytes)
+            new_size  = len(new_bytes)
+            status    = "NO CHANGE" if old_hash == new_hash else "MODIFIED"
 
-            old_hash = get_file_hash_bytes(old_bytes)
-            new_hash = get_file_hash_bytes(new_bytes)
-
-            old_size = len(old_bytes)
-            new_size = len(new_bytes)
-
-            # Determine status
-            if old_hash == new_hash:
-                status = "NO CHANGE"
+            # Status badge
+            if status == "NO CHANGE":
+                st.success("✨ NO CHANGE — Files are identical!")
             else:
-                status = "MODIFIED"
+                st.warning("🔄 MODIFIED — Files are different!")
 
-            icons = {"MODIFIED": "🔄", "NO CHANGE": "✨"}
-            clr   = color_modified if status == "MODIFIED" else "#8b949e"
-            icon  = icons.get(status, "")
-
-            st.markdown(
-                f"**Status:** {icon} <span style='color:{clr}; font-weight:bold'>{status}</span>",
-                unsafe_allow_html=True
-            )
-
-            # Details
+            # Details row
             st.divider()
-            d_cols = st.columns(2)
-            with d_cols[0]:
-                st.markdown(f"**Old File:** `{old_upload.name}`")
-                st.caption(f"Size: {old_size:,} bytes")
-                st.caption(f"MD5: `{old_hash}`")
-            with d_cols[1]:
-                st.markdown(f"**New File:** `{new_upload.name}`")
-                st.caption(f"Size: {new_size:,} bytes")
-                st.caption(f"MD5: `{new_hash}`")
+            d1, d2 = st.columns(2)
+            with d1:
+                st.markdown(f"**Old:** `{old_up.name}`")
+                st.caption(f"Size : {old_size:,} bytes")
+                st.caption(f"MD5  : `{old_hash}`")
+            with d2:
+                st.markdown(f"**New:** `{new_up.name}`")
+                st.caption(f"Size : {new_size:,} bytes")
+                st.caption(f"MD5  : `{new_hash}`")
 
             if status == "MODIFIED":
-                size_diff = new_size - old_size
-                sign = "+" if size_diff >= 0 else ""
-                st.caption(f"Size difference: {sign}{size_diff:,} bytes")
+                diff_b = new_size - old_size
+                sign   = "+" if diff_b >= 0 else ""
+                st.caption(f"Size difference: **{sign}{diff_b:,} bytes**")
+
+                # Line-by-line diff for text files
+                if is_text(old_bytes) and is_text(new_bytes):
+                    st.divider()
+                    st.markdown("### 📝 Line-by-Line Diff")
+                    old_text   = old_bytes.decode("utf-8", errors="replace")
+                    new_text   = new_bytes.decode("utf-8", errors="replace")
+                    diff_lines = line_diff(old_text, new_text)
+                    added_c    = sum(1 for d in diff_lines if d["type"] == "added")
+                    removed_c  = sum(1 for d in diff_lines if d["type"] == "removed")
+                    st.caption(f"+{added_c} lines added  |  -{removed_c} lines removed")
+
+                    rows_html = ""
+                    for d in diff_lines:
+                        css  = "diff-add" if d["type"] == "added" else \
+                               "diff-rem" if d["type"] == "removed" else "diff-eq"
+                        sign = "+" if d["type"] == "added" else \
+                               "-" if d["type"] == "removed" else " "
+                        old_n = str(d["old_no"]) if d["old_no"] else ""
+                        new_n = str(d["new_no"]) if d["new_no"] else ""
+                        line  = d["line"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                        rows_html += (
+                            f"<tr class='{css}'>"
+                            f"<td class='lineno'>{old_n}</td>"
+                            f"<td class='lineno'>{new_n}</td>"
+                            f"<td>{sign} {line}</td>"
+                            f"</tr>"
+                        )
+                    st.markdown(
+                        f"<table class='diff-table'>{rows_html}</table>",
+                        unsafe_allow_html=True
+                    )
+                else:
+                    st.info("Binary file — line diff not available.")
