@@ -1,4 +1,5 @@
 """Compare two snapshots and provide line-by-line diff for text files."""
+from __future__ import annotations
 import difflib
 
 

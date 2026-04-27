@@ -51,7 +51,7 @@ def list_snapshots():
     return sorted(snaps, key=lambda x: x["date"], reverse=True)
 
 
-def build_snapshot_from_uploads(uploaded_files) -> dict:
+def build_snapshot_from_uploads(uploaded_files):
     """Build snapshot dict from a list of UploadedFile objects."""
     files_data = {}
     skipped = []
@@ -69,7 +69,7 @@ def build_snapshot_from_uploads(uploaded_files) -> dict:
     return files_data, skipped
 
 
-def build_snapshot_from_zip(zip_bytes: bytes) -> tuple[dict, list]:
+def build_snapshot_from_zip(zip_bytes: bytes):
     """Extract ZIP and build snapshot dict."""
     files_data = {}
     skipped = []
