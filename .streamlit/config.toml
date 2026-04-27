@@ -1,2 +1,2 @@
-[theme]
-primaryColor = "#238636"
+[server]
+headless = true
