@@ -34,7 +34,9 @@ def take_snapshot(folder_path, output_file):
                 continue
 
     snapshot = {"files": files}
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    output_dir = os.path.dirname(output_file)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
     with open(output_file, 'w') as f:
         json.dump(snapshot, f, indent=2)
 
