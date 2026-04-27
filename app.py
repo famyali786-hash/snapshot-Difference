@@ -87,13 +87,8 @@ def build_snapshot_from_zip(zip_bytes):
 
 # ── Theme ─────────────────────────────────────────────────────────────────────
 
-if "theme" not in st.session_state:
-    st.session_state.theme = False
-
 with st.sidebar:
     st.title("Settings")
-    theme = st.toggle("Dark Mode", value=st.session_state.theme)
-    st.session_state.theme = theme
     st.divider()
     st.write("**Select Section**")
     section = st.radio(
@@ -102,27 +97,20 @@ with st.sidebar:
         label_visibility="collapsed"
     )
 
-dark = theme
-bg_color       = "#0d1117" if dark else "#ffffff"
-text_color     = "#c9d1d9" if dark else "#24292f"
-sidebar_color  = "#161b22" if dark else "#f0f2f6"
-color_added    = "#3fb950" if dark else "#22863a"
-color_modified = "#d29922" if dark else "#b08800"
-color_removed  = "#f85149" if dark else "#cb2431"
-diff_add_bg    = "#0d4429" if dark else "#e6ffec"
-diff_rem_bg    = "#4d1818" if dark else "#ffebe9"
+# Colors for diff output — work in both light and dark mode
+color_added    = "#22863a"
+color_modified = "#b08800"
+color_removed  = "#cb2431"
 
-st.markdown(f"""
+st.markdown("""
 <style>
-.stApp {{ background-color: {bg_color}; color: {text_color}; }}
-[data-testid="stSidebar"] {{ background-color: {sidebar_color}; }}
-.stButton > button {{ background-color: #238636; color: white; border: none; }}
-.diff-table {{ width:100%; border-collapse:collapse; font-family:monospace; font-size:0.82rem; }}
-.diff-table td {{ padding: 2px 8px; white-space: pre-wrap; word-break: break-all; }}
-.diff-add {{ background:{diff_add_bg}; color:{color_added}; }}
-.diff-rem {{ background:{diff_rem_bg}; color:{color_removed}; }}
-.diff-eq  {{ color:#8b949e; }}
-.lineno   {{ color:#8b949e; text-align:right; user-select:none; min-width:36px; }}
+.stButton > button { background-color: #238636; color: white; border: none; }
+.diff-table { width:100%; border-collapse:collapse; font-family:monospace; font-size:0.82rem; }
+.diff-table td { padding: 2px 8px; white-space: pre-wrap; word-break: break-all; }
+.diff-add { background:#e6ffec; color:#22863a; }
+.diff-rem { background:#ffebe9; color:#cb2431; }
+.diff-eq  { color:#57606a; }
+.lineno   { color:#8b949e; text-align:right; user-select:none; min-width:36px; }
 </style>
 """, unsafe_allow_html=True)
 
