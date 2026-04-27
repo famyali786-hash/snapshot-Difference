@@ -10,51 +10,58 @@ import streamlit as st
 
 from src.diff import diff_snapshots, line_diff
 
+# Page config — title, icon, layout
 st.set_page_config(page_title="File System Snapshot", page_icon="📁", layout="wide")
 
+# Folder where all snapshot JSON files are saved
 SNAPSHOT_DIR = "snapshots"
 os.makedirs(SNAPSHOT_DIR, exist_ok=True)
 
+# Files larger than this will be skipped during upload
 MAX_FILE_SIZE_MB = 50
 
 
 def get_hash(data):
+    """Return MD5 hash of bytes data."""
     return hashlib.md5(data).hexdigest()
 
 
 def is_text(data):
+    """Return True if data looks like a text file (no null bytes in first 8KB)."""
     return b"\x00" not in data[:8192]
 
 
 @st.cache_data(show_spinner=False)
 def list_snapshots():
+    """Read all snapshot JSON files and return sorted list of metadata."""
     snaps = []
     if not os.path.exists(SNAPSHOT_DIR):
         return snaps
     for f in os.listdir(SNAPSHOT_DIR):
-        if f.endswith(".json"):
-            path = os.path.join(SNAPSHOT_DIR, f)
-            try:
-                stat = os.stat(path)
-                with open(path) as fp:
-                    data = json.load(fp)
-                snaps.append({
-                    "name": f,
-                    "date": datetime.fromtimestamp(stat.st_mtime),
-                    "total_files": len(data.get("files", {}))
-                })
-            except (OSError, json.JSONDecodeError):
-                continue
+        if not f.endswith(".json"):
+            continue
+        path = os.path.join(SNAPSHOT_DIR, f)
+        try:
+            stat = os.stat(path)
+            with open(path) as fp:
+                data = json.load(fp)
+            snaps.append({
+                "name": f,
+                "date": datetime.fromtimestamp(stat.st_mtime),
+                "total_files": len(data.get("files", {}))
+            })
+        except (OSError, json.JSONDecodeError):
+            continue
     return sorted(snaps, key=lambda x: x["date"], reverse=True)
 
 
 def build_snapshot_from_uploads(uploaded_files):
+    """Build snapshot dict from uploaded files. Returns (files_data, skipped)."""
     files_data = {}
     skipped = []
     for uf in uploaded_files:
         raw = uf.read()
-        size_mb = len(raw) / (1024 * 1024)
-        if size_mb > MAX_FILE_SIZE_MB:
+        if len(raw) / (1024 * 1024) > MAX_FILE_SIZE_MB:
             skipped.append(uf.name)
             continue
         files_data[uf.name] = {
@@ -66,14 +73,14 @@ def build_snapshot_from_uploads(uploaded_files):
 
 
 def build_snapshot_from_zip(zip_bytes):
+    """Extract ZIP and build snapshot dict. Returns (files_data, skipped)."""
     files_data = {}
     skipped = []
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         for info in zf.infolist():
             if info.is_dir():
                 continue
-            size_mb = info.file_size / (1024 * 1024)
-            if size_mb > MAX_FILE_SIZE_MB:
+            if info.file_size / (1024 * 1024) > MAX_FILE_SIZE_MB:
                 skipped.append(info.filename)
                 continue
             raw = zf.read(info.filename)
@@ -85,54 +92,56 @@ def build_snapshot_from_zip(zip_bytes):
     return files_data, skipped
 
 
-# ── Theme ─────────────────────────────────────────────────────────────────────
+def get_live_stats():
+    """Calculate live stats from snapshots folder. Returns (count, total_files, last_date_str)."""
+    total_snapshots = 0
+    total_files     = 0
+    last_snapshot   = "None"
+
+    if not os.path.exists(SNAPSHOT_DIR):
+        return total_snapshots, total_files, last_snapshot
+
+    snap_files  = [f for f in os.listdir(SNAPSHOT_DIR) if f.endswith(".json")]
+    total_snapshots = len(snap_files)
+    latest_time = None
+
+    for snap_file in snap_files:
+        snap_path = os.path.join(SNAPSHOT_DIR, snap_file)
+        try:
+            mtime = os.path.getmtime(snap_path)
+            with open(snap_path) as fp:
+                data = json.load(fp)
+            total_files += len(data.get("files", {}))
+            if latest_time is None or mtime > latest_time:
+                latest_time = mtime
+        except (OSError, json.JSONDecodeError):
+            continue
+
+    if latest_time:
+        snap_date = datetime.fromtimestamp(latest_time)
+        today     = datetime.now()
+        if snap_date.date() == today.date():
+            last_snapshot = "Today"
+        elif (today.date() - snap_date.date()).days == 1:
+            last_snapshot = "Yesterday"
+        else:
+            last_snapshot = snap_date.strftime("%b %d, %Y")
+
+    return total_snapshots, total_files, last_snapshot
+
+
+# ── SIDEBAR ───────────────────────────────────────────────────────────────────
 
 with st.sidebar:
     st.title("Settings")
     st.divider()
 
-    # ── Live Stats ──────────────────────────────
-    # Snapshots folder se real data calculate karo
-    total_snapshots = 0
-    total_files     = 0
-    last_snapshot   = "None"
-
-    if os.path.exists(SNAPSHOT_DIR):
-        snap_files = [f for f in os.listdir(SNAPSHOT_DIR) if f.endswith(".json")]
-        total_snapshots = len(snap_files)
-
-        latest_time = None
-        for snap_file in snap_files:
-            snap_path = os.path.join(SNAPSHOT_DIR, snap_file)
-            try:
-                mtime = os.path.getmtime(snap_path)
-                with open(snap_path) as fp:
-                    data = json.load(fp)
-                total_files += len(data.get("files", {}))
-                if latest_time is None or mtime > latest_time:
-                    latest_time = mtime
-            except (OSError, json.JSONDecodeError):
-                continue
-
-        if latest_time:
-            snap_date = datetime.fromtimestamp(latest_time)
-            today     = datetime.now()
-            if snap_date.date() == today.date():
-                last_snapshot = "Today"
-            elif (today.date() - snap_date.date()).days == 1:
-                last_snapshot = "Yesterday"
-            else:
-                last_snapshot = snap_date.strftime("%b %d, %Y")
+    # Live stats — fresh every page render (no cache)
+    total_snapshots, total_files, last_snapshot = get_live_stats()
 
     st.markdown("**📊 Live Stats**")
     st.markdown(f"""
-    <div style="
-        border-radius: 8px;
-        padding: 10px 14px;
-        margin-bottom: 8px;
-        font-size: 0.88rem;
-        line-height: 2;
-    ">
+    <div style="border-radius:8px; padding:10px 14px; margin-bottom:8px; font-size:0.88rem; line-height:2;">
         💾 &nbsp;<b>Snapshots:</b> {total_snapshots}<br>
         📄 &nbsp;<b>Files tracked:</b> {total_files}<br>
         🕐 &nbsp;<b>Last snapshot:</b> {last_snapshot}
@@ -147,13 +156,12 @@ with st.sidebar:
         label_visibility="collapsed"
     )
 
-# Fixed diff colors that work in both light and dark mode
-color_added    = "#2ea043"
-color_removed  = "#da3633"
-color_modified = "#d29922"
+
+# ── CSS STYLES ────────────────────────────────────────────────────────────────
 
 st.markdown("""
 <style>
+/* Green buttons */
 .stButton > button {
     background-color: #238636 !important;
     color: white !important;
@@ -166,6 +174,7 @@ st.markdown("""
     border: none !important;
     border-radius: 6px !important;
 }
+/* Diff table */
 .diff-table {
     width: 100%;
     border-collapse: collapse;
@@ -180,19 +189,14 @@ st.markdown("""
 .diff-add { background: #0d4429; color: #3fb950; }
 .diff-rem { background: #4d1818; color: #f85149; }
 .diff-eq  { color: #8b949e; }
-.lineno   {
-    color: #8b949e !important;
-    text-align: right;
-    user-select: none;
-    min-width: 36px;
-}
+.lineno   { color: #8b949e !important; text-align: right; user-select: none; min-width: 36px; }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("📁 File System Snapshot Tool")
 
 
-# ── TAKE SNAPSHOT ─────────────────────────────────────────────────────────────
+# ── SECTION 1: TAKE SNAPSHOT ──────────────────────────────────────────────────
 if section == "Take Snapshot":
     st.header("Take Snapshot")
 
@@ -200,7 +204,7 @@ if section == "Take Snapshot":
     st.divider()
 
     files_data = {}
-    skipped = []
+    skipped    = []
 
     if mode == "📄 Individual Files":
         st.info("Select multiple files using **Ctrl+A** or **Shift+Click** in the file dialog.")
@@ -208,7 +212,6 @@ if section == "Take Snapshot":
         if uploaded:
             files_data, skipped = build_snapshot_from_uploads(uploaded)
             st.caption(f"✅ {len(files_data)} file(s) ready  |  ⚠️ {len(skipped)} skipped (too large)")
-
     else:
         st.info("Zip your entire folder → upload the ZIP here.")
         zip_upload = st.file_uploader("Upload ZIP file", type=["zip"])
@@ -239,7 +242,10 @@ if section == "Take Snapshot":
                 json.dump(snapshot, fp, indent=2)
             list_snapshots.clear()
             st.success(f"✅ Snapshot **{snapshot_name}** saved with {len(files_data)} file(s)!")
-            st.rerun()  # sidebar stats turant update honge
+            # Small delay so user sees success message before rerun
+            import time
+            time.sleep(1)
+            st.rerun()
 
     if import_file:
         try:
@@ -250,18 +256,22 @@ if section == "Take Snapshot":
                 json.dump(imported, fp, indent=2)
             list_snapshots.clear()
             st.success(f"✅ Snapshot **{imp_name}** imported successfully!")
-            st.rerun()  # sidebar stats turant update honge
+            import time
+            time.sleep(1)
+            st.rerun()
         except Exception as e:
             st.error(f"Import failed: {e}")
 
 
-# ── SNAPSHOT HISTORY ──────────────────────────────────────────────────────────
+# ── SECTION 2: SNAPSHOT HISTORY ───────────────────────────────────────────────
 elif section == "Snapshot History":
     st.header("Snapshot History")
     snaps = list_snapshots()
+
     if not snaps:
         st.info("📭 No snapshots yet. Create one first!")
     else:
+        # Table header
         cols = st.columns([4, 2, 1, 1, 1])
         with cols[0]: st.write("**Name**")
         with cols[1]: st.write("**Date**")
@@ -269,14 +279,18 @@ elif section == "Snapshot History":
         with cols[3]: st.write("**DL**")
         with cols[4]: st.write("**Del**")
         st.divider()
+
+        # One row per snapshot
         for snap in snaps:
             cols = st.columns([4, 2, 1, 1, 1])
             with cols[0]: st.write(f"📄 {snap['name']}")
             with cols[1]: st.write(snap["date"].strftime("%Y-%m-%d %H:%M"))
             with cols[2]: st.write(str(snap["total_files"]))
+
             snap_path = os.path.join(SNAPSHOT_DIR, snap["name"])
             with open(snap_path, "rb") as fp:
                 snap_bytes = fp.read()
+
             with cols[3]:
                 st.download_button(
                     "⬇️", data=snap_bytes,
@@ -291,10 +305,11 @@ elif section == "Snapshot History":
                     st.rerun()
 
 
-# ── COMPARE SNAPSHOTS ─────────────────────────────────────────────────────────
+# ── SECTION 3: COMPARE SNAPSHOTS ──────────────────────────────────────────────
 elif section == "Compare Snapshots":
     st.header("Compare Snapshots")
     snaps = list_snapshots()
+
     if len(snaps) < 2:
         st.warning("⚠️ Need at least 2 snapshots to compare.")
     else:
@@ -328,16 +343,19 @@ elif section == "Compare Snapshots":
                     )
                     st.divider()
 
+                    # Added files
                     if result_added:
                         st.markdown(f"### ✅ Added ({len(result_added)})")
                         for f in sorted(result_added):
-                            st.markdown(f"<span style='color:{color_added}'>+ {f}</span>", unsafe_allow_html=True)
+                            st.markdown(f"<span style='color:#2ea043'>+ {f}</span>", unsafe_allow_html=True)
 
+                    # Removed files
                     if result_removed:
                         st.markdown(f"### ❌ Removed ({len(result_removed)})")
                         for f in sorted(result_removed):
-                            st.markdown(f"<span style='color:{color_removed}'>- {f}</span>", unsafe_allow_html=True)
+                            st.markdown(f"<span style='color:#da3633'>- {f}</span>", unsafe_allow_html=True)
 
+                    # Modified files with line diff
                     if result_modified:
                         st.markdown(f"### 🔄 Modified ({len(result_modified)})")
                         for fname in sorted(result_modified):
@@ -355,8 +373,12 @@ elif section == "Compare Snapshots":
 
                                     rows_html = ""
                                     for d in diff_lines:
-                                        css   = "diff-add" if d["type"] == "added" else "diff-rem" if d["type"] == "removed" else "diff-eq"
-                                        sign  = "+" if d["type"] == "added" else "-" if d["type"] == "removed" else " "
+                                        if d["type"] == "added":
+                                            css, sign = "diff-add", "+"
+                                        elif d["type"] == "removed":
+                                            css, sign = "diff-rem", "-"
+                                        else:
+                                            css, sign = "diff-eq", " "
                                         old_n = str(d["old_no"]) if d["old_no"] else ""
                                         new_n = str(d["new_no"]) if d["new_no"] else ""
                                         line  = d["line"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -370,7 +392,7 @@ elif section == "Compare Snapshots":
                                     st.info(f"Binary file — size changed: {sign}{diff_b:,} bytes")
 
 
-# ── COMPARE FILES ─────────────────────────────────────────────────────────────
+# ── SECTION 4: COMPARE FILES ──────────────────────────────────────────────────
 elif section == "Compare Files":
     st.header("Compare Files")
     st.info("Upload the same file from two different points in time.")
@@ -428,8 +450,12 @@ elif section == "Compare Files":
 
                     rows_html = ""
                     for d in diff_lines:
-                        css   = "diff-add" if d["type"] == "added" else "diff-rem" if d["type"] == "removed" else "diff-eq"
-                        sign  = "+" if d["type"] == "added" else "-" if d["type"] == "removed" else " "
+                        if d["type"] == "added":
+                            css, sign = "diff-add", "+"
+                        elif d["type"] == "removed":
+                            css, sign = "diff-rem", "-"
+                        else:
+                            css, sign = "diff-eq", " "
                         old_n = str(d["old_no"]) if d["old_no"] else ""
                         new_n = str(d["new_no"]) if d["new_no"] else ""
                         line  = d["line"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
