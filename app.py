@@ -121,14 +121,20 @@ color_modified = "#b08800"
 st.markdown(f"""
 <style>
 .stApp {{ background-color: {bg_color}; color: {text_color}; }}
-[data-testid="stSidebar"] {{ background-color: {sidebar_color}; }}
-.stButton > button {{ background-color: #238636; color: white; border: none; }}
+[data-testid="stSidebar"] {{
+    background-color: {sidebar_color};
+    color: {text_color};
+}}
+[data-testid="stSidebar"] * {{
+    color: {text_color} !important;
+}}
+.stButton > button {{ background-color: #238636; color: white !important; border: none; }}
 .diff-table {{ width:100%; border-collapse:collapse; font-family:monospace; font-size:0.82rem; }}
 .diff-table td {{ padding: 2px 8px; white-space: pre-wrap; word-break: break-all; }}
 .diff-add {{ background:{diff_add_bg}; color:{color_added}; }}
 .diff-rem {{ background:{diff_rem_bg}; color:{color_removed}; }}
 .diff-eq  {{ color:#57606a; }}
-.lineno   {{ color:#8b949e; text-align:right; user-select:none; min-width:36px; }}
+.lineno   {{ color:#8b949e !important; text-align:right; user-select:none; min-width:36px; }}
 </style>
 """, unsafe_allow_html=True)
 
