@@ -88,7 +88,7 @@ def build_snapshot_from_zip(zip_bytes):
 # ── Theme ─────────────────────────────────────────────────────────────────────
 
 if "theme" not in st.session_state:
-    st.session_state.theme = False  # default: light mode (screenshot jaisa)
+    st.session_state.theme = False
 
 with st.sidebar:
     st.title("Settings")
@@ -103,33 +103,28 @@ with st.sidebar:
     )
 
 dark = theme
-bg_color = "#0d1117" if dark else "#ffffff"
-text_color = "#c9d1d9" if dark else "#24292f"
-sidebar_color = "#161b22" if dark else "#f0f2f6"
-btn_color = "#238636"
-color_added = "#3fb950" if dark else "#22863a"
+bg_color       = "#0d1117" if dark else "#ffffff"
+text_color     = "#c9d1d9" if dark else "#24292f"
+sidebar_color  = "#161b22" if dark else "#f0f2f6"
+color_added    = "#3fb950" if dark else "#22863a"
 color_modified = "#d29922" if dark else "#b08800"
-color_removed = "#f85149" if dark else "#cb2431"
+color_removed  = "#f85149" if dark else "#cb2431"
+diff_add_bg    = "#0d4429" if dark else "#e6ffec"
+diff_rem_bg    = "#4d1818" if dark else "#ffebe9"
 
-st.markdown(
-    f"""
+st.markdown(f"""
 <style>
 .stApp {{ background-color: {bg_color}; color: {text_color}; }}
 [data-testid="stSidebar"] {{ background-color: {sidebar_color}; }}
-.stButton > button {{ background-color: {btn_color}; color: white; border: none; }}
-.added {{ color: {color_added}; }}
-.modified {{ color: {color_modified}; }}
-.removed {{ color: {color_removed}; }}
+.stButton > button {{ background-color: #238636; color: white; border: none; }}
 .diff-table {{ width:100%; border-collapse:collapse; font-family:monospace; font-size:0.82rem; }}
 .diff-table td {{ padding: 2px 8px; white-space: pre-wrap; word-break: break-all; }}
-.diff-add {{ background:{"#0d4429" if dark else "#e6ffec"}; color:{color_added}; }}
-.diff-rem {{ background:{"#4d1818" if dark else "#ffebe9"}; color:{color_removed}; }}
+.diff-add {{ background:{diff_add_bg}; color:{color_added}; }}
+.diff-rem {{ background:{diff_rem_bg}; color:{color_removed}; }}
 .diff-eq  {{ color:#8b949e; }}
 .lineno   {{ color:#8b949e; text-align:right; user-select:none; min-width:36px; }}
 </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
 st.title("📁 File System Snapshot Tool")
 
@@ -163,15 +158,13 @@ if section == "Take Snapshot":
                     st.write(skipped)
 
     st.divider()
-    col1, col2 = st.columns([3, 2])
-    with col1:
-        snapshot_name = st.text_input("Snapshot Name", placeholder="e.g. my_snapshot")
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        save_btn = st.button("💾 Save Snapshot", type="primary", disabled=not files_data)
+    snapshot_name = st.text_input("Snapshot Name", placeholder="e.g. my_snapshot")
 
-    with st.expander("📥 Import existing snapshot JSON"):
-        import_file = st.file_uploader("Import snapshot JSON", type=["json"], key="import_snap")
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        save_btn = st.button("💾 Save Snapshot", type="primary", disabled=not files_data)
+    with col2:
+        import_file = st.file_uploader("📥 Import snapshot JSON", type=["json"], key="import_snap")
 
     if save_btn:
         if not snapshot_name.strip():
@@ -220,8 +213,12 @@ elif section == "Snapshot History":
             with open(snap_path, "rb") as fp:
                 snap_bytes = fp.read()
             with cols[3]:
-                st.download_button("⬇️", data=snap_bytes, file_name=snap["name"],
-                                   mime="application/json", key=f"dl_{snap['name']}")
+                st.download_button(
+                    "⬇️", data=snap_bytes,
+                    file_name=snap["name"],
+                    mime="application/json",
+                    key=f"dl_{snap['name']}"
+                )
             with cols[4]:
                 if st.button("🗑️", key=f"del_{snap['name']}"):
                     os.remove(snap_path)
@@ -269,20 +266,20 @@ elif section == "Compare Snapshots":
                     if result_added:
                         st.markdown(f"### ✅ Added ({len(result_added)})")
                         for f in sorted(result_added):
-                            st.markdown(f"<span class='added'>+ {f}</span>", unsafe_allow_html=True)
+                            st.markdown(f"<span style='color:{color_added}'>+ {f}</span>", unsafe_allow_html=True)
 
                     if result_removed:
                         st.markdown(f"### ❌ Removed ({len(result_removed)})")
                         for f in sorted(result_removed):
-                            st.markdown(f"<span class='removed'>- {f}</span>", unsafe_allow_html=True)
+                            st.markdown(f"<span style='color:{color_removed}'>- {f}</span>", unsafe_allow_html=True)
 
                     if result_modified:
                         st.markdown(f"### 🔄 Modified ({len(result_modified)})")
                         for fname in sorted(result_modified):
                             old_entry = old["files"].get(fname, {})
                             new_entry = new["files"].get(fname, {})
-                            old_text = old_entry.get("text")
-                            new_text = new_entry.get("text")
+                            old_text  = old_entry.get("text")
+                            new_text  = new_entry.get("text")
 
                             with st.expander(f"📄 {fname}"):
                                 if old_text is not None and new_text is not None:
@@ -293,8 +290,8 @@ elif section == "Compare Snapshots":
 
                                     rows_html = ""
                                     for d in diff_lines:
-                                        css  = "diff-add" if d["type"] == "added" else "diff-rem" if d["type"] == "removed" else "diff-eq"
-                                        sign = "+" if d["type"] == "added" else "-" if d["type"] == "removed" else " "
+                                        css   = "diff-add" if d["type"] == "added" else "diff-rem" if d["type"] == "removed" else "diff-eq"
+                                        sign  = "+" if d["type"] == "added" else "-" if d["type"] == "removed" else " "
                                         old_n = str(d["old_no"]) if d["old_no"] else ""
                                         new_n = str(d["new_no"]) if d["new_no"] else ""
                                         line  = d["line"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -366,8 +363,8 @@ elif section == "Compare Files":
 
                     rows_html = ""
                     for d in diff_lines:
-                        css  = "diff-add" if d["type"] == "added" else "diff-rem" if d["type"] == "removed" else "diff-eq"
-                        sign = "+" if d["type"] == "added" else "-" if d["type"] == "removed" else " "
+                        css   = "diff-add" if d["type"] == "added" else "diff-rem" if d["type"] == "removed" else "diff-eq"
+                        sign  = "+" if d["type"] == "added" else "-" if d["type"] == "removed" else " "
                         old_n = str(d["old_no"]) if d["old_no"] else ""
                         new_n = str(d["new_no"]) if d["new_no"] else ""
                         line  = d["line"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
