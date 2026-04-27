@@ -89,6 +89,7 @@ def build_snapshot_from_zip(zip_bytes):
 
 with st.sidebar:
     st.title("Settings")
+    dark_mode = st.toggle("Dark Mode", value=False)
     st.divider()
     st.write("**Select Section**")
     section = st.radio(
@@ -97,50 +98,57 @@ with st.sidebar:
         label_visibility="collapsed"
     )
 
-# Colors — same in both light and dark (Streamlit handles background automatically)
-color_added   = "#2ea043"
-color_removed = "#da3633"
-color_modified = "#d29922"
-diff_add_bg   = "#0d4429"
-diff_rem_bg   = "#4d1818"
+# Colors based on dark_mode toggle
+if dark_mode:
+    diff_add_bg   = "#0d4429"
+    diff_rem_bg   = "#4d1818"
+    color_added   = "#3fb950"
+    color_removed = "#f85149"
+else:
+    diff_add_bg   = "#e6ffec"
+    diff_rem_bg   = "#ffebe9"
+    color_added   = "#22863a"
+    color_removed = "#cb2431"
 
-st.markdown("""
+color_modified = "#d29922"
+
+st.markdown(f"""
 <style>
 /* ── Buttons always green ── */
-.stButton > button {
+.stButton > button {{
     background-color: #238636 !important;
     color: white !important;
     border: none !important;
     border-radius: 6px !important;
-}
-.stDownloadButton > button {
+}}
+.stDownloadButton > button {{
     background-color: #238636 !important;
     color: white !important;
     border: none !important;
     border-radius: 6px !important;
-}
+}}
 
 /* ── Diff table ── */
-.diff-table {
+.diff-table {{
     width: 100%;
     border-collapse: collapse;
     font-family: monospace;
     font-size: 0.82rem;
-}
-.diff-table td {
+}}
+.diff-table td {{
     padding: 2px 8px;
     white-space: pre-wrap;
     word-break: break-all;
-}
-.diff-add { background: #0d4429; color: #2ea043; }
-.diff-rem { background: #4d1818; color: #da3633; }
-.diff-eq  { color: #8b949e; }
-.lineno   {
+}}
+.diff-add {{ background: {diff_add_bg}; color: {color_added}; }}
+.diff-rem {{ background: {diff_rem_bg}; color: {color_removed}; }}
+.diff-eq  {{ color: #8b949e; }}
+.lineno   {{
     color: #8b949e !important;
     text-align: right;
     user-select: none;
     min-width: 36px;
-}
+}}
 </style>
 """, unsafe_allow_html=True)
 
