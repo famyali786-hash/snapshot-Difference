@@ -104,17 +104,88 @@ if dark_mode:
     diff_rem_bg   = "#4d1818"
     color_added   = "#3fb950"
     color_removed = "#f85149"
+    bg_color      = "#0d1117"
+    text_color    = "#c9d1d9"
+    sidebar_color = "#161b22"
+    input_bg      = "#21262d"
+    border_color  = "#30363d"
 else:
     diff_add_bg   = "#e6ffec"
     diff_rem_bg   = "#ffebe9"
     color_added   = "#22863a"
     color_removed = "#cb2431"
+    bg_color      = "#ffffff"
+    text_color    = "#24292f"
+    sidebar_color = "#f0f2f6"
+    input_bg      = "#ffffff"
+    border_color  = "#d0d7de"
 
 color_modified = "#d29922"
 
 st.markdown(f"""
 <style>
-/* ── Buttons always green ── */
+/* ── Main background and text ── */
+.stApp {{
+    background-color: {bg_color} !important;
+    color: {text_color} !important;
+}}
+
+/* ── Sidebar ── */
+[data-testid="stSidebar"] {{
+    background-color: {sidebar_color} !important;
+}}
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] div,
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3 {{
+    color: {text_color} !important;
+}}
+
+/* ── Main content text ── */
+.main p, .main span, .main label,
+.main h1, .main h2, .main h3, .main div {{
+    color: {text_color};
+}}
+
+/* ── Text input ── */
+.stTextInput input {{
+    background-color: {input_bg} !important;
+    color: {text_color} !important;
+    border: 1px solid {border_color} !important;
+    border-radius: 6px !important;
+}}
+
+/* ── Selectbox ── */
+[data-testid="stSelectbox"] > div > div {{
+    background-color: {input_bg} !important;
+    color: {text_color} !important;
+    border: 1px solid {border_color} !important;
+}}
+
+/* ── File uploader ── */
+[data-testid="stFileUploader"] {{
+    background-color: {input_bg} !important;
+    border: 1px solid {border_color} !important;
+    border-radius: 8px !important;
+}}
+[data-testid="stFileUploader"] * {{
+    color: {text_color} !important;
+}}
+
+/* ── Expander ── */
+[data-testid="stExpander"] {{
+    background-color: {input_bg} !important;
+    border: 1px solid {border_color} !important;
+}}
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] summary span {{
+    color: {text_color} !important;
+}}
+
+/* ── Buttons ── */
 .stButton > button {{
     background-color: #238636 !important;
     color: white !important;
