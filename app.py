@@ -90,6 +90,56 @@ def build_snapshot_from_zip(zip_bytes):
 with st.sidebar:
     st.title("Settings")
     st.divider()
+
+    # ── Live Stats ──────────────────────────────
+    # Snapshots folder se real data calculate karo
+    total_snapshots = 0
+    total_files     = 0
+    last_snapshot   = "None"
+
+    if os.path.exists(SNAPSHOT_DIR):
+        snap_files = [f for f in os.listdir(SNAPSHOT_DIR) if f.endswith(".json")]
+        total_snapshots = len(snap_files)
+
+        latest_time = None
+        for snap_file in snap_files:
+            snap_path = os.path.join(SNAPSHOT_DIR, snap_file)
+            try:
+                mtime = os.path.getmtime(snap_path)
+                with open(snap_path) as fp:
+                    data = json.load(fp)
+                total_files += len(data.get("files", {}))
+                if latest_time is None or mtime > latest_time:
+                    latest_time = mtime
+            except (OSError, json.JSONDecodeError):
+                continue
+
+        if latest_time:
+            snap_date = datetime.fromtimestamp(latest_time)
+            today     = datetime.now()
+            if snap_date.date() == today.date():
+                last_snapshot = "Today"
+            elif (today.date() - snap_date.date()).days == 1:
+                last_snapshot = "Yesterday"
+            else:
+                last_snapshot = snap_date.strftime("%b %d, %Y")
+
+    st.markdown("**📊 Live Stats**")
+    st.markdown(f"""
+    <div style="
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin-bottom: 8px;
+        font-size: 0.88rem;
+        line-height: 2;
+    ">
+        💾 &nbsp;<b>Snapshots:</b> {total_snapshots}<br>
+        📄 &nbsp;<b>Files tracked:</b> {total_files}<br>
+        🕐 &nbsp;<b>Last snapshot:</b> {last_snapshot}
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.divider()
     st.write("**Select Section**")
     section = st.radio(
         "Navigation",
